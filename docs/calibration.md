@@ -8,7 +8,7 @@
 
 ## iPad Safari 的 HTTPS 准备
 
-推荐直接双击构建目录中的 `windows-master/windows-calibrator.exe`（当前版本位于 `build/windows-master/`）。它会启动主控和 HTTPS 服务，显示 iPad 首次设置地址与后续使用的校准地址，并允许选择电脑输出设备。同步音乐前需安装 VB-CABLE 或 Virtual Audio Driver，把虚拟设备设为 Windows 默认播放设备，再在 GUI 选择真实扬声器。iPad 第一次打开设置地址后，按网页顺序安装并信任证书。时钟同步后，点一次“双向声音自动校准”。
+推荐直接双击构建目录中的 `windows-master/windows-calibrator.exe`（当前版本位于 `build/windows-master/`）。它会启动主控和 HTTPS 服务，显示 iPad 首次设置地址与后续使用的校准地址，并允许选择电脑输出设备。同步音乐前需安装 VB-CABLE 或 Virtual Audio Driver，把虚拟设备设为 Windows 默认播放设备，再在 GUI 选择真实扬声器。切换 Windows 默认输出时，GUI 会重新查找实体扬声器的设备编号并自动重连；状态显示“双端受控播放已就绪”后，电脑扬声器才会播放虚拟设备中的声音。iPad 第一次打开设置地址后，按网页顺序安装并信任证书。时钟同步后，点一次“双向声音自动校准”。
 
 下列命令保留给需要手动指定 IP 或排查端口的开发者：
 

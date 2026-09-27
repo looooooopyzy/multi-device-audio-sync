@@ -15,12 +15,23 @@
 
 namespace {
 constexpr int kCopySetup=101,kCopySecure=102,kOpenFolder=103,kRestart=104,kMode=105,kOutput=106;
+constexpr COLORREF kBackground=RGB(244,248,250);
+constexpr COLORREF kCard=RGB(255,255,255);
+constexpr COLORREF kBorder=RGB(215,226,231);
+constexpr COLORREF kText=RGB(25,45,53);
+constexpr COLORREF kMuted=RGB(93,112,120);
+constexpr COLORREF kAccent=RGB(0,153,139);
+constexpr COLORREF kWarning=RGB(171,98,25);
 struct App {
-  HWND window=nullptr,status=nullptr,setup=nullptr,secure=nullptr;
+  HWND window=nullptr,title=nullptr,subtitle=nullptr,note=nullptr;
+  HWND status=nullptr,setup=nullptr,secure=nullptr;
   HWND mode=nullptr,output=nullptr;
-  HFONT font=nullptr;
+  HFONT font=nullptr,title_font=nullptr,section_font=nullptr,small_font=nullptr;
+  HBRUSH background_brush=nullptr,card_brush=nullptr;
+  COLORREF status_color=kText;
   HANDLE master=nullptr,proxy=nullptr;
   std::filesystem::path root,master_exe,proxy_script,pythonw;
+  std::wstring default_endpoint_id;
   std::string ip;
   int http_port=0,https_port=0;
   bool music_mode=true;
@@ -101,7 +112,15 @@ bool launch(const std::filesystem::path& executable,const std::wstring& argument
   CloseHandle(info.hThread);
   return true;
 }
-void set_status(const std::wstring& value) { SetWindowTextW(app.status,value.c_str()); }
+void set_status(const std::wstring& value) {
+  app.status_color=value.find(L"已就绪")!=std::wstring::npos ||
+                   value.find(L"校准完成")!=std::wstring::npos?kAccent:
+                   value.find(L"失败")!=std::wstring::npos ||
+                   value.find(L"退出")!=std::wstring::npos ||
+                   value.find(L"找不到")!=std::wstring::npos ||
+                   value.find(L"仅 iPad")!=std::wstring::npos?kWarning:kText;
+  SetWindowTextW(app.status,value.c_str());
+}
 std::wstring calibration_status() {
   std::ifstream file(app.root/L".local-certs/calibration-status.txt",std::ios::binary);
   if(!file) return L"等待 iPad 发起校准";
@@ -136,25 +155,27 @@ bool is_likely_virtual_output(const std::wstring& name) {
          lower.find(L"transcreen")!=std::wstring::npos ||
          lower.find(L"虚拟")!=std::wstring::npos;
 }
-UINT default_output_device() {
+struct DefaultOutputEndpoint {
+  std::wstring id,name;
+};
+DefaultOutputEndpoint default_output_endpoint() {
+  DefaultOutputEndpoint result;
   IMMDeviceEnumerator* enumerator=nullptr;
   IMMDevice* endpoint=nullptr;
   IPropertyStore* properties=nullptr;
   PROPVARIANT value{};
-  UINT result=WAVE_MAPPER;
   if(SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator),nullptr,CLSCTX_ALL,
                                 __uuidof(IMMDeviceEnumerator),
                                 reinterpret_cast<void**>(&enumerator))) &&
-     SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender,eMultimedia,&endpoint)) &&
-     SUCCEEDED(endpoint->OpenPropertyStore(STGM_READ,&properties)) &&
-     SUCCEEDED(properties->GetValue(PKEY_Device_FriendlyName,&value)) &&
-     value.vt==VT_LPWSTR && value.pwszVal) {
-    const std::wstring name=value.pwszVal;
-    for(UINT id=0;id<waveOutGetNumDevs();++id) {
-      WAVEOUTCAPSW caps{};
-      if(waveOutGetDevCapsW(id,&caps,sizeof(caps))==MMSYSERR_NOERROR &&
-         name.rfind(caps.szPname,0)==0) { result=id; break; }
+     SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender,eMultimedia,&endpoint))) {
+    LPWSTR id=nullptr;
+    if(SUCCEEDED(endpoint->GetId(&id)) && id) {
+      result.id=id;
+      CoTaskMemFree(id);
     }
+    if(SUCCEEDED(endpoint->OpenPropertyStore(STGM_READ,&properties)) &&
+       SUCCEEDED(properties->GetValue(PKEY_Device_FriendlyName,&value)) &&
+       value.vt==VT_LPWSTR && value.pwszVal) result.name=value.pwszVal;
   }
   PropVariantClear(&value);
   if(properties) properties->Release();
@@ -162,13 +183,29 @@ UINT default_output_device() {
   if(enumerator) enumerator->Release();
   return result;
 }
-bool default_is_virtual_route_input() {
-  const UINT id=default_output_device();
-  WAVEOUTCAPSW caps{};
-  return id!=WAVE_MAPPER && waveOutGetDevCapsW(id,&caps,sizeof(caps))==MMSYSERR_NOERROR &&
-          is_virtual_route_input(caps.szPname);
+UINT default_output_device() {
+  const auto name=default_output_endpoint().name;
+  for(UINT id=0;id<waveOutGetNumDevs();++id) {
+    WAVEOUTCAPSW caps{};
+    if(waveOutGetDevCapsW(id,&caps,sizeof(caps))==MMSYSERR_NOERROR &&
+       name.rfind(caps.szPname,0)==0) return id;
+  }
+  return WAVE_MAPPER;
 }
 void populate_output_devices() {
+  std::wstring preferred;
+  const LRESULT previous=SendMessageW(app.output,CB_GETCURSEL,0,0);
+  if(previous>=0) {
+    const LRESULT length=SendMessageW(app.output,CB_GETLBTEXTLEN,previous,0);
+    if(length>0) {
+      preferred.resize(static_cast<size_t>(length)+1);
+      SendMessageW(app.output,CB_GETLBTEXT,previous,
+                   reinterpret_cast<LPARAM>(preferred.data()));
+      preferred.resize(static_cast<size_t>(length));
+    }
+  }
+  SendMessageW(app.output,CB_RESETCONTENT,0,0);
+  app.output_device=0xffffffffu;
   const UINT count=waveOutGetNumDevs();
   std::vector<std::pair<UINT,std::wstring>> devices;
   for(UINT id=0;id<count;++id) {
@@ -178,23 +215,28 @@ void populate_output_devices() {
       devices.emplace_back(id,caps.szPname);
   }
   const UINT default_id=default_output_device();
-  int selected=-1,first_physical=-1;
+  int preferred_row=-1,default_row=-1,first_physical=-1;
   for(const auto& device:devices) {
     int row=static_cast<int>(SendMessageW(app.output,CB_ADDSTRING,0,
                                           reinterpret_cast<LPARAM>(device.second.c_str())));
     SendMessageW(app.output,CB_SETITEMDATA,row,device.first);
     if(first_physical<0) first_physical=row;
-    if(device.first==default_id) selected=row;
+    if(device.second==preferred) preferred_row=row;
+    if(device.first==default_id) default_row=row;
   }
-  if(selected<0) selected=first_physical;
-  if(selected<0 && !devices.empty()) selected=0;
+  const int selected=preferred_row>=0?preferred_row:
+                     default_row>=0?default_row:first_physical;
   if(selected>=0) {
     SendMessageW(app.output,CB_SETCURSEL,selected,0);
     app.output_device=static_cast<uint32_t>(SendMessageW(app.output,CB_GETITEMDATA,selected,0));
   }
 }
 void start_services() {
+  KillTimer(app.window,1);
   stop_services();
+  const auto endpoint=default_output_endpoint();
+  app.default_endpoint_id=endpoint.id;
+  populate_output_devices();
   auto addresses=audio::lan_addresses();
   app.ip.clear();
   for(const auto& address:addresses) if(address.preferred) { app.ip=address.ip; break; }
@@ -221,8 +263,9 @@ void start_services() {
   if(app.output_device==0xffffffffu) {
     set_status(L"找不到可用的电脑扬声器输出设备。"); return;
   }
-  app.route_music=app.music_mode && default_is_virtual_route_input() &&
-                  app.output_device!=default_output_device();
+  const UINT default_device=default_output_device();
+  app.route_music=app.music_mode && is_virtual_route_input(endpoint.name) &&
+                  (default_device==WAVE_MAPPER || app.output_device!=default_device);
   const std::wstring master_args=(app.music_mode?
     L"--web-only --source system":L"--web-only --source tone")+
     (app.music_mode && !app.route_music?L"":
@@ -257,48 +300,142 @@ void copy_text(const std::wstring& value) {
   CloseClipboard();
 }
 HWND add_control(const wchar_t* kind,const wchar_t* value,DWORD style,
-                 int x,int y,int width,int height,int id=0) {
+                 int x,int y,int width,int height,int id=0,HFONT font=nullptr) {
   HWND control=CreateWindowExW(0,kind,value,WS_CHILD|WS_VISIBLE|style,
     x,y,width,height,app.window,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
     GetModuleHandleW(nullptr),nullptr);
-  SendMessageW(control,WM_SETFONT,reinterpret_cast<WPARAM>(app.font),TRUE);
+  SendMessageW(control,WM_SETFONT,reinterpret_cast<WPARAM>(font?font:app.font),TRUE);
   return control;
+}
+void draw_card(HDC dc,int left,int top,int right,int bottom) {
+  HPEN pen=CreatePen(PS_SOLID,1,kBorder);
+  HGDIOBJ old_pen=SelectObject(dc,pen);
+  HGDIOBJ old_brush=SelectObject(dc,app.card_brush);
+  RoundRect(dc,left,top,right,bottom,16,16);
+  SelectObject(dc,old_brush);
+  SelectObject(dc,old_pen);
+  DeleteObject(pen);
+}
+void draw_button(const DRAWITEMSTRUCT& item) {
+  const bool primary=item.CtlID==kRestart;
+  const bool pressed=(item.itemState&ODS_SELECTED)!=0;
+  const COLORREF fill=primary?(pressed?RGB(0,127,116):kAccent):
+                               (pressed?RGB(233,241,244):kCard);
+  HBRUSH brush=CreateSolidBrush(fill);
+  HPEN pen=CreatePen(PS_SOLID,1,primary?fill:kBorder);
+  HGDIOBJ old_brush=SelectObject(item.hDC,brush);
+  HGDIOBJ old_pen=SelectObject(item.hDC,pen);
+  RoundRect(item.hDC,item.rcItem.left,item.rcItem.top,
+            item.rcItem.right-1,item.rcItem.bottom-1,10,10);
+  SelectObject(item.hDC,old_brush);
+  SelectObject(item.hDC,old_pen);
+  DeleteObject(brush);
+  DeleteObject(pen);
+  wchar_t label[100]{};
+  GetWindowTextW(item.hwndItem,label,100);
+  SetBkMode(item.hDC,TRANSPARENT);
+  SetTextColor(item.hDC,primary?RGB(255,255,255):kText);
+  HGDIOBJ old_font=SelectObject(item.hDC,app.font);
+  RECT text=item.rcItem;
+  DrawTextW(item.hDC,label,-1,&text,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
+  SelectObject(item.hDC,old_font);
+  if(item.itemState&ODS_FOCUS) {
+    RECT focus=item.rcItem;
+    InflateRect(&focus,-5,-5);
+    DrawFocusRect(item.hDC,&focus);
+  }
 }
 LRESULT CALLBACK window_proc(HWND window,UINT message,WPARAM wparam,LPARAM lparam) {
   switch(message) {
   case WM_CREATE: {
     app.window=window;
-    app.font=CreateFontW(-20,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+    app.background_brush=CreateSolidBrush(kBackground);
+    app.card_brush=CreateSolidBrush(kCard);
+    app.font=CreateFontW(-18,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
       OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
-    add_control(L"STATIC",L"双向声音自动校准",0,24,18,650,34);
-    add_control(L"STATIC",L"Windows 主控与 HTTPS 会自动在后台运行，无需打开终端。",0,24,57,660,28);
-    add_control(L"STATIC",L"iPad 首次设置地址（先安装证书）",0,24,101,650,28);
+    app.title_font=CreateFontW(-31,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+      OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    app.section_font=CreateFontW(-21,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+      OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    app.small_font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+      OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    app.title=add_control(L"STATIC",L"多设备音频",0,32,20,770,39,0,app.title_font);
+    app.subtitle=add_control(L"STATIC",L"Windows 与 iPad 同步播放 · 本地网络自动校准",
+                             0,34,65,760,26,0,app.small_font);
+    add_control(L"STATIC",L"连接 iPad",0,36,116,740,29,0,app.section_font);
+    add_control(L"STATIC",L"首次使用：先打开这个地址安装并信任证书",0,
+                36,149,740,23,0,app.small_font);
     app.setup=add_control(L"EDIT",L"正在准备…",ES_READONLY|WS_BORDER|ES_AUTOHSCROLL,
-                          24,130,515,34);
-    add_control(L"BUTTON",L"复制",BS_PUSHBUTTON,551,130,122,34,kCopySetup);
-    add_control(L"STATIC",L"已信任证书后使用的校准地址",0,24,179,650,28);
+                          36,176,638,38);
+    add_control(L"BUTTON",L"复制",BS_OWNERDRAW|WS_TABSTOP,690,176,96,38,kCopySetup);
+    add_control(L"STATIC",L"后续使用：打开 HTTPS 校准页面",0,
+                36,224,740,23,0,app.small_font);
     app.secure=add_control(L"EDIT",L"正在准备…",ES_READONLY|WS_BORDER|ES_AUTOHSCROLL,
-                           24,208,515,34);
-    add_control(L"BUTTON",L"复制",BS_PUSHBUTTON,551,208,122,34,kCopySecure);
-    add_control(L"BUTTON",L"打开证书目录",BS_PUSHBUTTON,24,268,165,38,kOpenFolder);
-    add_control(L"BUTTON",L"重新启动服务",BS_PUSHBUTTON,202,268,165,38,kRestart);
-    add_control(L"STATIC",L"音源",0,390,247,280,22);
+                           36,251,638,38);
+    add_control(L"BUTTON",L"复制",BS_OWNERDRAW|WS_TABSTOP,690,251,96,38,kCopySecure);
+    add_control(L"STATIC",L"播放设置",0,36,335,740,29,0,app.section_font);
+    add_control(L"STATIC",L"电脑扬声器输出",0,36,367,350,23,0,app.small_font);
+    app.output=add_control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,
+      36,390,350,154,kOutput);
+    add_control(L"STATIC",L"音源",0,430,367,350,23,0,app.small_font);
     app.mode=add_control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL,
-      390,270,283,140,kMode);
+      430,390,356,154,kMode);
     SendMessageW(app.mode,CB_ADDSTRING,0,
       reinterpret_cast<LPARAM>(L"测试音（用于校准）"));
     SendMessageW(app.mode,CB_ADDSTRING,0,
       reinterpret_cast<LPARAM>(L"电脑正在播放的音乐"));
     SendMessageW(app.mode,CB_SETCURSEL,app.music_mode?1:0,0);
-    add_control(L"STATIC",L"电脑扬声器输出",0,24,247,330,22);
-    app.output=add_control(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL,
-      24,270,340,140,kOutput);
-    populate_output_devices();
-    app.status=add_control(L"STATIC",L"准备启动…",0,24,326,650,62);
+    add_control(L"BUTTON",L"打开证书目录",BS_OWNERDRAW|WS_TABSTOP,
+                36,471,208,42,kOpenFolder);
+    add_control(L"BUTTON",L"重新启动服务",BS_OWNERDRAW|WS_TABSTOP,
+                256,471,208,42,kRestart);
+    app.note=add_control(L"STATIC",L"切换默认输出后会自动重连",0,
+                         489,480,295,24,0,app.small_font);
+    add_control(L"STATIC",L"运行状态",0,36,539,740,28,0,app.section_font);
+    app.status=add_control(L"STATIC",L"准备启动…",SS_LEFT,36,570,750,39);
     start_services();
     return 0;
   }
+  case WM_ERASEBKGND: {
+    RECT area{};
+    GetClientRect(window,&area);
+    FillRect(reinterpret_cast<HDC>(wparam),&area,app.background_brush);
+    return 1;
+  }
+  case WM_PAINT: {
+    PAINTSTRUCT paint{};
+    HDC dc=BeginPaint(window,&paint);
+    draw_card(dc,20,103,820,307);
+    draw_card(dc,20,321,820,451);
+    draw_card(dc,20,526,820,614);
+    EndPaint(window,&paint);
+    return 0;
+  }
+  case WM_CTLCOLORSTATIC: {
+    HDC dc=reinterpret_cast<HDC>(wparam);
+    HWND control=reinterpret_cast<HWND>(lparam);
+    SetBkMode(dc,TRANSPARENT);
+    SetTextColor(dc,control==app.title?kText:
+                    control==app.status?app.status_color:kMuted);
+    return reinterpret_cast<LRESULT>(control==app.title || control==app.subtitle ||
+                                     control==app.note?
+                                     app.background_brush:app.card_brush);
+  }
+  case WM_CTLCOLOREDIT: {
+    HDC dc=reinterpret_cast<HDC>(wparam);
+    SetBkColor(dc,kCard);
+    SetTextColor(dc,kText);
+    return reinterpret_cast<LRESULT>(app.card_brush);
+  }
+  case WM_DRAWITEM:
+    draw_button(*reinterpret_cast<DRAWITEMSTRUCT*>(lparam));
+    return TRUE;
   case WM_TIMER:
+    if(const auto endpoint=default_output_endpoint();
+       !endpoint.id.empty() && endpoint.id!=app.default_endpoint_id) {
+      start_services();
+      return 0;
+    }
     if(!alive(app.master)) {
       const auto source=calibration_status();
       set_status(source.find(L"Windows 输出设备启动失败")!=std::wstring::npos?source:
@@ -311,8 +448,8 @@ LRESULT CALLBACK window_proc(HWND window,UINT message,WPARAM wparam,LPARAM lpara
         const auto source=calibration_status();
         set_status(source.find(L"电脑音乐捕获失败")!=std::wstring::npos?source:
           (app.route_music?
-             L"双端受控播放已就绪。Windows 默认输出为虚拟设备，选择的设备播放电脑原声；现在可点页面自动校准。":
-             L"当前可播放到 iPad。若要与电脑扬声器同步，请将 VB-CABLE 或 Virtual Audio Driver 设为默认播放设备，并选择真实扬声器。"));
+             L"双端受控播放已就绪。电脑扬声器和 iPad 已由主控同步播放，可在 iPad 页面自动校准。":
+             L"仅 iPad 转发。若要电脑扬声器同步播放，请将 CABLE Input 设为 Windows 默认输出。"));
       } else set_status(L"服务已就绪。"+calibration_status()+L"。iPad 在校准页点击“自动校准”。");
     return 0;
   case WM_COMMAND:
@@ -333,12 +470,7 @@ LRESULT CALLBACK window_proc(HWND window,UINT message,WPARAM wparam,LPARAM lpara
       return 0;
     case kOutput:
       if(HIWORD(wparam)==CBN_SELCHANGE) {
-        const LRESULT row=SendMessageW(app.output,CB_GETCURSEL,0,0);
-        if(row>=0) {
-          const uint32_t selected=static_cast<uint32_t>(
-            SendMessageW(app.output,CB_GETITEMDATA,row,0));
-          if(selected!=app.output_device) { app.output_device=selected; start_services(); }
-        }
+        start_services();
       }
       return 0;
     }
@@ -347,6 +479,11 @@ LRESULT CALLBACK window_proc(HWND window,UINT message,WPARAM wparam,LPARAM lpara
     KillTimer(window,1);
     stop_services();
     if(app.font) DeleteObject(app.font);
+    if(app.title_font) DeleteObject(app.title_font);
+    if(app.section_font) DeleteObject(app.section_font);
+    if(app.small_font) DeleteObject(app.small_font);
+    if(app.background_brush) DeleteObject(app.background_brush);
+    if(app.card_brush) DeleteObject(app.card_brush);
     PostQuitMessage(0);
     return 0;
   }
@@ -372,12 +509,12 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR arguments,int show) {
   klass.lpfnWndProc=window_proc;
   klass.hInstance=instance;
   klass.lpszClassName=L"MultiDeviceAudioCalibrator";
-  klass.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
+  klass.hbrBackground=nullptr;
   klass.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));
   RegisterClassW(&klass);
   HWND window=CreateWindowExW(0,klass.lpszClassName,L"多设备音频 · 自动校准",
-    WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,
-    710,440,nullptr,nullptr,instance,nullptr);
+    WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX|WS_CLIPCHILDREN,
+    CW_USEDEFAULT,CW_USEDEFAULT,860,680,nullptr,nullptr,instance,nullptr);
   if(window) {
     ShowWindow(window,show);
     UpdateWindow(window);

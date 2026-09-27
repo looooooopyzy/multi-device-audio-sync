@@ -54,6 +54,8 @@ cmake --build build
 6. On each device, tap **Enable Speaker**. Confirm the audio source shows **System music (synchronized)** and the received packet count increases.
 7. To calibrate a new device, keep already-synchronized browser pages active, pause the music briefly, and tap **Two-way acoustic calibration** on the new device. The shared Windows delay stays fixed while the new device's delay is adjusted.
 
+The GUI remaps the selected physical speaker and reconnects when the Windows default output changes. Wait for **Synchronized playback ready** before expecting sound from the PC speaker while CABLE Input is the default.
+
 1. 安装 [VB-CABLE](https://vb-audio.com/Cable/) 或其他受支持的虚拟播放端点。
 2. 在 Windows 声音设置中，将 **CABLE Input (VB-Audio Virtual Cable)** 设为默认播放设备。
 3. 运行 `build\windows-master\windows-calibrator.exe`。图形程序默认进入电脑音乐模式，并启动本地 HTTP/HTTPS 服务。
@@ -61,6 +63,8 @@ cmake --build build
 5. 在各设备打开程序显示的校准地址。iPad 首次使用时，通过首次设置地址安装并信任本地证书，再打开 HTTPS 校准地址。Android 播放音乐时可直接用 Chrome 打开 HTTP 地址，无需 Android 麦克风权限。
 6. 在各设备点击“启用扬声器”。确认音源显示“系统音乐（双端同步）”，且接收音频包数量持续增加。
 7. 校准新设备时，保持已同步的浏览器页面运行，暂时暂停音乐，然后在新设备点击“双向声音自动校准”。程序保持 Windows 公共延迟不变，只调整新设备的延迟。
+
+切换 Windows 默认输出后，图形程序会重新匹配所选实体扬声器并自动重连。将 CABLE Input 设为默认输出后，请等状态显示“**双端受控播放已就绪**”，电脑扬声器才会由程序转送声音。
 
 Keep mobile browsers in the foreground during playback and calibration. The Windows microphone must be a physical microphone that can hear the Windows speaker and the device being calibrated. The GUI also supports a fixed test tone mode.
 
