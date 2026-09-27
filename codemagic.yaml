@@ -1,0 +1,43 @@
+# LEGACY / EXPERIMENTAL: native iOS and Codemagic work are paused.
+# The primary client is the LAN browser speaker in web-client/.
+workflows:
+  ios-compile:
+    name: iOS compile check (unsigned)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+    scripts:
+      - name: Compile iOS app
+        script: |
+          xcodebuild \
+            -project "$CM_BUILD_DIR/ios-client/AudioNode.xcodeproj" \
+            -scheme AudioNode \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+    artifacts:
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
+      - /tmp/xcodebuild_logs/*.log
+
+  ios-ipad-ad-hoc:
+    name: iPad Ad Hoc IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: org.multideviceaudio.node
+    scripts:
+      - name: Apply uploaded signing certificate and provisioning profile
+        script: xcode-project use-profiles --project "$CM_BUILD_DIR/ios-client/AudioNode.xcodeproj"
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/ios-client/AudioNode.xcodeproj" \
+            --scheme AudioNode
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log

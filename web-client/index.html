@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101820">
+  <title>多设备空间音频</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="mark" aria-hidden="true">◉</div>
+      <div>
+        <p class="eyebrow">局域网扬声器节点 · 阶段 B</p>
+        <h1>多设备空间音频</h1>
+        <p class="subtitle">让本设备与 Windows 主控保持同步。</p>
+      </div>
+    </header>
+
+    <section class="status-card" aria-live="polite">
+      <div><span class="label">连接状态</span><strong id="connection-status">正在连接…</strong></div>
+      <div><span class="label">主控设备</span><strong id="master-name">—</strong></div>
+      <div><span class="label">本机设备</span><strong id="device-name">—</strong></div>
+    </section>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>时钟同步</h2>
+        <div class="metric"><span>往返时延（RTT）</span><strong id="rtt">—</strong></div>
+        <div class="metric"><span>过滤后往返时延</span><strong id="filtered-rtt">—</strong></div>
+        <div class="metric"><span>时钟偏移</span><strong id="offset">—</strong></div>
+        <div class="metric"><span>过滤后时钟偏移</span><strong id="filtered-offset">—</strong></div>
+        <div class="metric"><span>抖动</span><strong id="jitter">—</strong></div>
+        <div class="metric"><span>时钟漂移</span><strong id="drift">—</strong></div>
+        <div class="metric"><span>同步质量</span><strong id="quality">—</strong></div>
+        <p class="hint">各设备的单调时钟起点不同，因此时钟偏移的绝对值不需要接近 0。</p>
+      </section>
+
+      <section class="panel">
+        <h2>音频</h2>
+        <div class="metric"><span>音频状态</span><strong id="audio-state">未启用</strong></div>
+        <div class="metric"><span>本机音频模式</span><strong id="audio-session">—</strong></div>
+        <div class="metric"><span>PCM 音源</span><strong id="stream-source">关闭</strong></div>
+        <div class="metric"><span>已接收音频包</span><strong id="stream-packets">0</strong></div>
+        <div class="metric"><span>声道</span><strong>立体声</strong></div>
+        <div class="metric"><span>目标缓冲时长</span><strong id="buffer-target">200 ms</strong></div>
+        <div class="metric"><span>当前缓冲时长</span><strong id="buffered-audio">0 ms</strong></div>
+        <div class="metric"><span>迟到或缓冲不足</span><strong id="underruns">0</strong></div>
+        <div class="metric"><span>最近一次提示音</span><strong id="last-click">—</strong></div>
+        <button id="enable-speaker" class="primary" type="button">启用扬声器</button>
+        <button id="test-click" class="secondary" type="button" disabled>测试同步提示音</button>
+        <p class="hint">首次使用请点击“启用扬声器”。测试期间请让 Safari 或 Chrome 保持在前台。</p>
+      </section>
+    </div>
+
+    <section class="panel calibration">
+      <div>
+        <h2>延迟校准</h2>
+        <p class="hint">调整本设备相对于主控的播放延迟。正值表示播放更晚。</p>
+      </div>
+      <div class="cal-controls">
+        <button id="auto-calibrate" class="primary" type="button">双向声音自动校准</button>
+        <p id="calibration-status" class="hint" role="status">需要本设备与 Windows 麦克风都能听到两次校准声。</p>
+        <div class="cal-buttons">
+          <button type="button" data-cal="-20">−20</button>
+          <button type="button" data-cal="-5">−5</button>
+          <button type="button" data-cal="-1">−1</button>
+          <button type="button" data-cal="1">+1</button>
+          <button type="button" data-cal="5">+5</button>
+          <button type="button" data-cal="20">+20</button>
+        </div>
+        <label>当前校准 <input id="calibration" type="number" min="-500" max="500" step="0.1" value="0"> ms</label>
+      </div>
+    </section>
+    <p id="notice" class="notice" role="status">正在等待 Windows 主控连接。</p>
+    <footer>仅限局域网 · 无需账号 · 不使用云服务 · 48 kHz 双声道 PCM</footer>
+  </main>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>

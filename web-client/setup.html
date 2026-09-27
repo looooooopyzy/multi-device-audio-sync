@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>iPad 自动校准设置</title>
+  <link rel="stylesheet" href="/styles/main.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero"><div class="mark" aria-hidden="true">◉</div><div>
+      <p class="eyebrow">首次设置</p><h1>iPad 自动校准</h1>
+      <p class="subtitle">按顺序完成一次证书安装，之后可直接打开校准页面。</p>
+    </div></header>
+    <section class="panel">
+      <h2>1. 安装本地证书</h2>
+      <p>在 iPad 上下载证书，然后到“设置”安装已下载的描述文件。</p>
+      <a class="setup-link" href="/lan-root-ca.crt">下载 Windows 主控证书</a>
+      <p class="hint">只安装当前 Windows 主控生成的证书。私钥只保存在 Windows 电脑上。</p>
+    </section>
+    <section class="panel setup-step">
+      <h2>2. 启用完全信任</h2>
+      <p>打开“设置 → 通用 → 关于本机 → 证书信任设置”，为“Multi-device Audio LAN CA”启用完全信任。</p>
+    </section>
+    <section class="panel setup-step">
+      <h2>3. 打开校准页面</h2>
+      <a class="setup-link" id="calibration-link" href="#">打开 HTTPS 自动校准</a>
+      <p class="hint">页面时钟同步后，点击“双向声音自动校准”。Safari 可能询问麦克风权限，请允许。</p>
+    </section>
+  </main>
+  <script>
+    const port = new URLSearchParams(location.search).get("https");
+    const link = document.getElementById("calibration-link");
+    if (/^[0-9]{1,5}$/.test(port || "") && Number(port) > 0 && Number(port) <= 65535)
+      link.href = `https://${location.hostname}:${port}/`;
+    else { link.removeAttribute("href"); link.textContent = "校准端口无效，请从 Windows 程序重新复制地址"; }
+  </script>
+</body>
+</html>

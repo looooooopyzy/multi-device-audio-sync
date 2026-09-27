@@ -1,0 +1,5 @@
+add_executable(simulated-client main.cpp)
+target_link_libraries(simulated-client PRIVATE audio_shared)
+if(MINGW)
+  target_link_options(simulated-client PRIVATE -static -static-libgcc -static-libstdc++)
+endif()

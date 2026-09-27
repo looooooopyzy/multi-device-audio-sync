@@ -1,0 +1,39 @@
+:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f3f6f8;background:#101820;font-synthesis:none}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at 88% 0%,#27434d 0,transparent 33%),#101820}
+.shell{max-width:1000px;margin:auto;padding:clamp(20px,5vw,52px)}
+.hero{display:flex;gap:18px;align-items:center;margin-bottom:28px}
+.mark{display:grid;place-items:center;width:62px;height:62px;flex:none;border-radius:18px;background:#16b7a1;color:#062923;font-size:40px;box-shadow:0 12px 36px #0005}
+.eyebrow{margin:0 0 6px;color:#7ae2d2;font-size:.72rem;font-weight:800;letter-spacing:.2em}
+h1{font-size:clamp(1.7rem,5vw,3.1rem);letter-spacing:-.04em;margin:0}
+.subtitle{color:#a9bcc5;margin:7px 0 0}
+.status-card,.panel{background:#1b2831;border:1px solid #31424a;border-radius:18px;box-shadow:0 12px 35px #0002}
+.status-card{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:20px 24px;margin-bottom:18px}
+.status-card>div{min-width:0}
+.label{display:block;color:#9cafba;font-size:.77rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.status-card strong{overflow-wrap:anywhere}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.panel{padding:22px 24px}
+h2{font-size:1.12rem;margin:0 0 18px;letter-spacing:.01em}
+.metric{display:flex;justify-content:space-between;align-items:baseline;gap:14px;border-bottom:1px solid #34434c;padding:10px 0}
+.metric span{color:#a9bbc4}.metric strong{font-variant-numeric:tabular-nums;text-align:right}
+.hint{color:#91a6b1;font-size:.87rem;line-height:1.5;margin:15px 0 0}
+button{cursor:pointer;border:1px solid #52717a;border-radius:10px;padding:11px 14px;font:inherit;font-weight:700;color:#f3f6f8;background:#29404a;touch-action:manipulation}
+button:disabled{cursor:not-allowed;opacity:.48}
+button:focus-visible,input:focus-visible{outline:3px solid #86eadb;outline-offset:2px}
+button.primary,button.secondary{width:100%;margin-top:16px}
+button.primary{background:#19baa6;border-color:#19baa6;color:#062923}
+button.secondary{margin-top:10px}
+.calibration{display:flex;justify-content:space-between;gap:24px;align-items:center;margin-top:18px}
+.calibration h2{margin-bottom:0}
+.cal-controls{min-width:min(100%,420px)}
+.cal-buttons{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.cal-controls .primary{width:100%;margin-bottom:10px}
+.cal-buttons button{padding:10px 3px;font-size:.85rem}
+.cal-controls label{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px;color:#a9bbc4}
+input{width:93px;padding:9px;border-radius:8px;border:1px solid #52717a;background:#12212a;color:#fff;font:inherit;font-variant-numeric:tabular-nums}
+.notice{min-height:24px;color:#7ae2d2;margin:23px 0}
+footer{color:#78909b;font-size:.78rem;border-top:1px solid #31424a;padding-top:15px}
+.setup-step{margin-top:16px}
+.setup-link{display:inline-block;margin-top:8px;padding:12px 16px;border-radius:10px;background:#19baa6;color:#062923;font-weight:700;text-decoration:none}
+@media(max-width:690px){.status-card{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.calibration{display:block}.cal-controls{margin-top:18px}}

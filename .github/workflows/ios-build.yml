@@ -1,0 +1,23 @@
+name: iOS simulator build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Compile iOS app without signing
+        run: >-
+          xcodebuild
+          -project ios-client/AudioNode.xcodeproj
+          -target AudioNode
+          -configuration Debug
+          -sdk iphonesimulator
+          CODE_SIGNING_ALLOWED=NO
+          build
