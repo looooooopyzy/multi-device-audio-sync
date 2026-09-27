@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101820">
-  <title>多设备空间音频</title>
+  <title>多设备音频同步</title>
   <link rel="stylesheet" href="/styles/main.css">
 </head>
 <body>
@@ -12,8 +12,8 @@
     <header class="hero">
       <div class="mark" aria-hidden="true">◉</div>
       <div>
-        <p class="eyebrow">局域网扬声器节点 · 阶段 B</p>
-        <h1>多设备空间音频</h1>
+        <p class="eyebrow">局域网扬声器节点 · 双模式播放</p>
+        <h1>多设备音频同步</h1>
         <p class="subtitle">让本设备与 Windows 主控保持同步。</p>
       </div>
     </header>
@@ -22,6 +22,35 @@
       <div><span class="label">连接状态</span><strong id="connection-status">正在连接…</strong></div>
       <div><span class="label">主控设备</span><strong id="master-name">—</strong></div>
       <div><span class="label">本机设备</span><strong id="device-name">—</strong></div>
+    </section>
+
+    <section class="panel listening-panel" aria-labelledby="listening-title">
+      <div class="listening-heading">
+        <div>
+          <p class="section-kicker">播放方式</p>
+          <h2 id="listening-title">选择你的听音方式</h2>
+        </div>
+        <span class="mode-badge" id="mode-badge">普通同步</span>
+      </div>
+      <div class="mode-options" role="group" aria-label="播放模式">
+        <button class="mode-option is-selected" type="button" data-mode="normal" aria-pressed="true">
+          <span class="mode-index">01 / 原版</span><strong>普通同步</strong>
+          <small>每台设备播放完整立体声，沿用现在的声音。</small>
+        </button>
+        <button class="mode-option" type="button" data-mode="spatial" aria-pressed="false">
+          <span class="mode-index">02 / 房间声场</span><strong>空间音频</strong>
+          <small>按设备的左右位置分配声道，延续现有声学校准。</small>
+        </button>
+      </div>
+      <div id="room-editor" class="room-editor" hidden>
+        <div class="room-heading"><div><h3>房间布局</h3><p>从听音位置看，将设备拖到实际方位。左右位置决定声道，纵向位置用于记录布局。</p></div><span>左声道 ← → 右声道</span></div>
+        <div id="room-stage" class="room-stage" aria-label="设备房间布局">
+          <div class="room-grid" aria-hidden="true"></div>
+          <div class="listener-point" aria-hidden="true"><span>◎</span><small>听音位置</small></div>
+          <div id="room-nodes"></div>
+        </div>
+        <p id="room-status" class="room-status">等待设备连接。</p>
+      </div>
     </section>
 
     <div class="grid">
@@ -43,7 +72,7 @@
         <div class="metric"><span>本机音频模式</span><strong id="audio-session">—</strong></div>
         <div class="metric"><span>PCM 音源</span><strong id="stream-source">关闭</strong></div>
         <div class="metric"><span>已接收音频包</span><strong id="stream-packets">0</strong></div>
-        <div class="metric"><span>声道</span><strong>立体声</strong></div>
+        <div class="metric"><span>本机声道</span><strong id="channel-mode">完整立体声</strong></div>
         <div class="metric"><span>目标缓冲时长</span><strong id="buffer-target">200 ms</strong></div>
         <div class="metric"><span>当前缓冲时长</span><strong id="buffered-audio">0 ms</strong></div>
         <div class="metric"><span>迟到或缓冲不足</span><strong id="underruns">0</strong></div>

@@ -1,6 +1,7 @@
 #pragma once
 #include "audio/clock_sync.h"
 #include "audio/audio_packet.h"
+#include "spatial_mix.h"
 #include <winsock2.h>
 #include <cstdint>
 #include <filesystem>
@@ -39,6 +40,8 @@ public:
   void broadcast_click(int64_t master_time_ns);
   void set_stream_info(uint32_t stream_id,const std::string& source,uint32_t delay_ms);
   void broadcast_audio(const AudioPacket& packet);
+  void set_local_output(bool enabled);
+  SpeakerMix local_mix() const;
   std::vector<WebNodeView> nodes() const;
   bool take_network_late();
   uint64_t take_calibration_request();
@@ -59,6 +62,15 @@ private:
   std::vector<CalibrationReport> calibration_reports_;
   uint32_t stream_id_=0,stream_delay_ms_=0;
   std::string stream_source_;
+  struct RoomPosition { int x=75,y=50; };
+  std::map<uint64_t,RoomPosition> room_positions_;
+  std::filesystem::path room_path_;
+  bool spatial_mode_=false,local_output_=false,room_dirty_=true;
+  int windows_x_=25,windows_y_=50;
+  void load_room();
+  void save_room() const;
+  void broadcast_room();
+  std::map<uint64_t,SpeakerMix> active_mixes() const;
   void accept_clients();
   void read_client(Client& client);
   void flush_client(Client& client);

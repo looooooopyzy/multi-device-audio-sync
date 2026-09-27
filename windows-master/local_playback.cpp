@@ -82,6 +82,7 @@ struct LocalStreamPlayback::Impl {
   uint64_t expected_frame=0,dropped=0;
   bool started=false;
   double delay_ms=0;
+  SpeakerMix mix,current_mix;
   explicit Impl(UINT output_device) {
     WAVEFORMATEX format{};
     format.wFormatTag=WAVE_FORMAT_PCM; format.nChannels=2;
@@ -120,6 +121,7 @@ void LocalStreamPlayback::set_delay_ms(double delay_ms) {
     impl_->reset();
   }
 }
+void LocalStreamPlayback::set_mix(SpeakerMix mix) { impl_->mix=mix; }
 void LocalStreamPlayback::submit(const AudioPacket& packet) {
   Impl& state=*impl_;
   if(!state.device || packet.samples.size()!=kAudioFramesPerPacket*kAudioChannels) return;
@@ -134,9 +136,24 @@ void LocalStreamPlayback::submit(const AudioPacket& packet) {
     std::min<int64_t>(lead_ns,500000000LL)*48/1000000);
   auto buffer=std::make_unique<Impl::Buffer>();
   buffer->pcm.assign(lead_frames*2+packet.samples.size(),0);
-  for(size_t i=0;i<packet.samples.size();++i)
-    buffer->pcm[lead_frames*2+i]=static_cast<int16_t>(
-      std::clamp(packet.samples[i],-1.0f,1.0f)*32767.0f);
+  for(size_t frame=0;frame<kAudioFramesPerPacket;++frame) {
+    const float t=float(frame+1)/kAudioFramesPerPacket;
+    const auto coefficients=[&](SpeakerMix mix,float& ll,float& lr,float& rl,float& rr) {
+      ll=mix.spatial?mix.left:1.0f; lr=mix.spatial?mix.right:0.0f;
+      rl=mix.spatial?mix.left:0.0f; rr=mix.spatial?mix.right:1.0f;
+    };
+    float a,b,c,d,e,f,g,h;
+    coefficients(state.current_mix,a,b,c,d);
+    coefficients(state.mix,e,f,g,h);
+    const float left=packet.samples[frame*2],right=packet.samples[frame*2+1];
+    const float out_left=left*(a+(e-a)*t)+right*(b+(f-b)*t);
+    const float out_right=left*(c+(g-c)*t)+right*(d+(h-d)*t);
+    buffer->pcm[(lead_frames+frame)*2]=static_cast<int16_t>(
+      std::clamp(out_left,-1.0f,1.0f)*32767.0f);
+    buffer->pcm[(lead_frames+frame)*2+1]=static_cast<int16_t>(
+      std::clamp(out_right,-1.0f,1.0f)*32767.0f);
+  }
+  state.current_mix=state.mix;
   buffer->header.lpData=reinterpret_cast<LPSTR>(buffer->pcm.data());
   buffer->header.dwBufferLength=static_cast<DWORD>(buffer->pcm.size()*sizeof(int16_t));
   if(waveOutPrepareHeader(state.device,&buffer->header,sizeof(WAVEHDR))!=MMSYSERR_NOERROR) {

@@ -4,7 +4,7 @@ import { BrowserClockSync } from "./clock-sync.js";
 import { AudioEngine } from "./audio-engine.js";
 import { decodeAudioPacket } from "./audio-packet.js";
 import { JitterBuffer } from "./jitter-buffer.js";
-import { render } from "./ui.js";
+import { render, renderRoom } from "./ui.js";
 import { MicrophoneCapture } from "./microphone-capture.js";
 import { detectProbePair, PROBE_GAP_MS } from "./calibration-probe.js";
 
@@ -34,6 +34,7 @@ const audio = new AudioEngine();
 const buffer = new JitterBuffer(200);
 const state = { device: identity.name, master: "—", connection: "CONNECTING",
                 clock, audio, buffer, stream: { source: "OFF", id: 0, received: 0 },
+                room: { mode: "normal", windows: { x: 25, y: 50, active: false }, devices: [] },
                 notice: "正在连接 Windows 主控…", calibrating: false,
                 calibrationStatus: "需要本设备与 Windows 麦克风都能听到两次校准声。" };
 let microphone = null;
@@ -68,6 +69,25 @@ const socket = new SpeakerSocket(identity, (message, receivedMs) => {
     state.notice = "正在收集时钟样本，请保持页面打开。";
     socket.send("CAL|" + audio.calibrationMs);
     socket.send("AUDIO|" + (audio.state === "RUNNING" ? "1" : "0"));
+  } else if (fields[0] === "ROOM" && fields.length >= 5 && (fields.length - 5) % 5 === 0 &&
+             (fields[1] === "normal" || fields[1] === "spatial")) {
+    const coordinate = (value) => Number.isInteger(Number(value)) && Number(value) >= 0 &&
+      Number(value) <= 100;
+    if (!coordinate(fields[2]) || !coordinate(fields[3])) return;
+    const devices = [];
+    for (let at = 5; at < fields.length; at += 5) {
+      if (!/^[1-9][0-9]*$/.test(fields[at]) || !coordinate(fields[at + 2]) ||
+          !coordinate(fields[at + 3])) return;
+      devices.push({ id: fields[at], name: fields[at + 1],
+        x: Number(fields[at + 2]), y: Number(fields[at + 3]),
+        active: fields[at + 4] === "1" });
+    }
+    state.room = { mode: fields[1],
+      windows: { x: Number(fields[2]), y: Number(fields[3]), active: fields[4] === "1" },
+      devices };
+    renderRoom(state.room, (id, x, y) => socket.send(`POSITION|${id}|${x}|${y}`));
+  } else if (fields[0] === "MIX" && fields.length === 4) {
+    audio.setMix(fields[1], Number(fields[2]), Number(fields[3]));
   } else if (fields[0] === "SYNC_REQ") {
     clock.handleRequest(fields, receivedMs, (text) => socket.send(text));
   } else if (fields[0] === "SYNC_MODEL") {
@@ -150,6 +170,10 @@ const socket = new SpeakerSocket(identity, (message, receivedMs) => {
     state.notice = "正在等待 Windows 主控连接。";
   }
   update();
+});
+
+document.querySelectorAll("[data-mode]").forEach((button) => {
+  button.addEventListener("click", () => socket.send("MODE|" + button.dataset.mode));
 });
 
 document.getElementById("auto-calibrate").addEventListener("click", async () => {

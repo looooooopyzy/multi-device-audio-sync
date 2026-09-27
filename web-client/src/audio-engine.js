@@ -12,6 +12,16 @@ export class AudioEngine {
     this.streamId = 0;
     this.nextFrame = 0;
     this.nextWhen = 0;
+    this.mix = { mode: "normal", left: 1, right: 1 };
+    this.currentMatrix = [1, 0, 0, 1];
+  }
+  setMix(mode, left = 1, right = 1) {
+    if (mode !== "spatial" || !Number.isFinite(left) || !Number.isFinite(right) ||
+        left < 0 || left > 1 || right < 0 || right > 1) {
+      this.mix = { mode: "normal", left: 1, right: 1 };
+      return;
+    }
+    this.mix = { mode, left, right };
   }
   get state() { return this.context ? this.context.state.toUpperCase() : "LOCKED"; }
   async enable() {
@@ -111,15 +121,25 @@ export class AudioEngine {
     }
     const frames = packets.reduce((count, item) => count + item.frameCount, 0);
     const buffer = context.createBuffer(2, frames, packet.sampleRate);
-    for (let channel = 0; channel < 2; channel += 1) {
-      const data = buffer.getChannelData(channel);
-      let at = 0;
-      for (const item of packets) {
-        for (let i = 0; i < item.frameCount; i += 1)
-          data[at + i] = item.samples[2 * i + channel];
-        at += item.frameCount;
+    const leftData = buffer.getChannelData(0);
+    const rightData = buffer.getChannelData(1);
+    const before = this.currentMatrix;
+    const after = this.mix.mode === "spatial"
+      ? [this.mix.left, this.mix.right, this.mix.left, this.mix.right]
+      : [1, 0, 0, 1];
+    let at = 0;
+    for (const item of packets) {
+      for (let i = 0; i < item.frameCount; i += 1) {
+        const t = (at + 1) / frames;
+        const left = item.samples[2 * i], right = item.samples[2 * i + 1];
+        leftData[at] = left * (before[0] + (after[0] - before[0]) * t) +
+          right * (before[1] + (after[1] - before[1]) * t);
+        rightData[at] = left * (before[2] + (after[2] - before[2]) * t) +
+          right * (before[3] + (after[3] - before[3]) * t);
+        at += 1;
       }
     }
+    this.currentMatrix = after;
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = playbackRate;

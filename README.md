@@ -4,9 +4,9 @@ Synchronize Windows music with browser speakers on phones, tablets, and computer
 
 通过局域网让 Windows 正在播放的音乐与手机、平板和电脑浏览器同步。项目包含 Windows 主控、适用于 iPad Safari 和 Android Chrome 的浏览器扬声器，以及声学延迟校准。
 
-> **Project status / 项目状态:** The Windows master and iPad Pro (2021) Safari music playback have been verified by the maintainer. Android Chrome is supported by the browser client but still needs physical-device verification. This is a stereo audio synchronization prototype; it does not perform multichannel spatial-audio rendering.
+> **Project status / 项目状态:** The Windows master and iPad Pro (2021) Safari music playback have been verified by the maintainer. Android Chrome is supported by the browser client but still needs physical-device verification. The spatial mode assigns stereo channels by physical speaker position; it is not an object-audio or Dolby Atmos renderer.
 >
-> Windows 主控与 iPad Pro（2021）Safari 音乐同步已由维护者实机验证。Android Chrome 可使用浏览器客户端，但仍需真机验证。本项目是立体声音频同步原型，不执行多声道空间音效渲染。
+> Windows 主控与 iPad Pro（2021）Safari 音乐同步已由维护者实机验证。Android Chrome 可使用浏览器客户端，但仍需真机验证。空间模式按实体扬声器位置分配立体声声道，并非对象音频或杜比全景声渲染。
 
 ## Features / 功能
 
@@ -16,6 +16,7 @@ Synchronize Windows music with browser speakers on phones, tablets, and computer
 - Calibrate each browser speaker acoustically using a physical Windows microphone.
 - Use an optional virtual playback device to route computer music through the master while keeping a separate physical speaker output.
 - Retain the original UDP synchronization code and experimental native Android/iOS clients.
+- Switch between the original full-stereo sync mode and a room-layout spatial mode without changing the capture stream or acoustic calibration.
 
 - 使用 WASAPI Loopback 捕获 Windows 默认播放混音。
 - 通过 WebSocket 向浏览器客户端发送带时间戳的 48 kHz 立体声 PCM。
@@ -23,6 +24,17 @@ Synchronize Windows music with browser speakers on phones, tablets, and computer
 - 使用 Windows 实体麦克风对各浏览器扬声器进行声学校准。
 - 可选使用虚拟播放设备，将电脑音乐交给主控处理，再输出到独立的实体扬声器。
 - 保留原有 UDP 同步代码，以及实验性的 Android/iOS 原生客户端。
+- 可在原有完整立体声同步模式与房间布局空间模式之间切换，继续使用同一音源和声学校准。
+
+## Playback modes / 播放模式
+
+**Mode 1 — Normal sync:** Every active speaker plays the complete stereo stream. This is the original behavior and remains the default on first launch.
+
+**Mode 2 — Spatial audio:** Open the browser speaker page and choose **Spatial audio**. Drag the Windows speaker and each connected browser speaker on the room map to match their positions relative to the listening point. The leftmost active speaker mainly plays the left channel; the rightmost mainly plays the right channel. Speakers between them receive a weighted mix. The vertical position is recorded for the room diagram but does not yet change audio. Fewer than two active speakers, or speakers with nearly identical horizontal positions, keep full stereo. Mode and positions are saved locally by the Windows master. After moving a physical speaker or changing the listening point, run acoustic calibration again.
+
+**版本 1——普通同步：**各扬声器仍播放完整立体声。这是原来的播放方式，首次启动默认使用它。
+
+**版本 2——空间音频：**在浏览器扬声器页面选择“空间音频”，按实际方位拖动房间图中的 Windows 扬声器和已连接设备。最左侧设备主要播放左声道，最右侧主要播放右声道，中间设备按位置混合。纵向位置目前只记录布局，不改变声音。少于两台有效扬声器，或设备左右位置过近时，仍播放完整立体声。模式与位置由 Windows 主控保存在本地。移动实体设备或改变听音位置后，请重新进行声音自动校准。
 
 ## Quick start: Windows / Windows 快速开始
 
@@ -142,13 +154,13 @@ The command-line master prints its local-network URL. Allow the chosen TCP port 
 
 ## Limitations / 当前限制
 
-- Audio is stereo PCM. Multichannel spatial rendering and per-application capture are not implemented.
+- Audio is stereo PCM. The spatial mode is position-based channel distribution around one listening point; multichannel object rendering and per-application capture are not implemented.
 - System capture records the Windows default playback endpoint mix.
 - Browser pages must remain foregrounded for reliable mobile playback.
 - Android Chrome playback is implemented in the shared browser client, but Android acoustic synchronization still needs physical-device verification.
 - Native iOS development and Codemagic IPA signing are paused.
 
-- 当前传输为立体声 PCM，尚未实现多声道空间渲染或按应用捕获。
+- 当前传输为立体声 PCM；空间模式围绕一个听音位置分配声道，尚未实现多声道对象音频渲染或按应用捕获。
 - 系统捕获读取 Windows 默认播放端点的混音。
 - 为保证移动端稳定播放，浏览器页面需要保持在前台。
 - Android Chrome 可使用通用浏览器客户端，但 Android 真机声学同步仍需验证。

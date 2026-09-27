@@ -99,6 +99,7 @@ int main(int argc,char** argv) {
         throw;
       }
     }
+    web.set_local_output(bool(stream_output));
     const std::string stream_label=source_name=="system" && stream_output?
       "system-routed":source_name;
     uint32_t stream_id=capture?static_cast<uint32_t>(monotonic_ns()|1):0;
@@ -306,7 +307,10 @@ int main(int argc,char** argv) {
           next_discontinuity=false;
           packet.samples.assign(block.samples.begin(),block.samples.end());
           web.broadcast_audio(packet);
-          if(stream_output) stream_output->submit(packet);
+          if(stream_output) {
+            stream_output->set_mix(web.local_mix());
+            stream_output->submit(packet);
+          }
         }
       }
       bool cli_click=false;

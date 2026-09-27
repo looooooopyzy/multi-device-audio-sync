@@ -108,7 +108,9 @@ struct WebServer::Client {
 };
 
 WebServer::WebServer(const std::filesystem::path& asset_root,uint16_t port)
-    :asset_root_(asset_root),port_(port) {
+    :asset_root_(asset_root),port_(port),
+     room_path_(asset_root.parent_path()/".local-certs/spatial-layout.txt") {
+  load_room();
   listener_=socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
   if(listener_==INVALID_SOCKET) throw std::runtime_error("web socket creation failed");
   sockaddr_in address{}; address.sin_family=AF_INET;
@@ -152,8 +154,81 @@ void WebServer::poll(int64_t now_ns) {
   }
   for(auto it=clients_.begin();it!=clients_.end();) {
     if(it->second->dead || (it->second->close_after_write && it->second->output.empty())) {
+      if(it->second->registered) room_dirty_=true;
       closesocket(it->first); it=clients_.erase(it);
     } else ++it;
+  }
+  if(room_dirty_) broadcast_room();
+}
+void WebServer::load_room() {
+  std::ifstream input(room_path_);
+  std::string kind;
+  while(input>>kind) {
+    if(kind=="mode") {
+      std::string value; input>>value; spatial_mode_=value=="spatial";
+    } else if(kind=="windows") {
+      int x,y; if(!(input>>x>>y)) break;
+      if(x>=0 && x<=100 && y>=0 && y<=100) { windows_x_=x; windows_y_=y; }
+    } else if(kind=="device") {
+      uint64_t id; int x,y; if(!(input>>id>>x>>y)) break;
+      if(id && x>=0 && x<=100 && y>=0 && y<=100 && room_positions_.size()<128)
+        room_positions_[id]={x,y};
+    } else { std::string rest; std::getline(input,rest); }
+  }
+}
+void WebServer::save_room() const {
+  std::filesystem::create_directories(room_path_.parent_path());
+  std::ofstream output(room_path_,std::ios::trunc);
+  if(!output) return;
+  output<<"mode "<<(spatial_mode_?"spatial":"normal")<<'\n';
+  output<<"windows "<<windows_x_<<' '<<windows_y_<<'\n';
+  for(const auto& item:room_positions_)
+    output<<"device "<<item.first<<' '<<item.second.x<<' '<<item.second.y<<'\n';
+}
+std::map<uint64_t,SpeakerMix> WebServer::active_mixes() const {
+  std::vector<SpeakerPosition> speakers;
+  if(local_output_) speakers.push_back({0,windows_x_});
+  for(const auto& item:clients_) {
+    const Client& client=*item.second;
+    if(!client.registered || client.dead || !client.audio_enabled || client.sync.size()<8) continue;
+    auto found=room_positions_.find(client.id);
+    speakers.push_back({client.id,found==room_positions_.end()?75:found->second.x});
+  }
+  return spatial_mixes(speakers);
+}
+SpeakerMix WebServer::local_mix() const {
+  if(!spatial_mode_) return {};
+  const auto mixes=active_mixes();
+  auto found=mixes.find(0);
+  return found==mixes.end()?SpeakerMix{}:found->second;
+}
+void WebServer::set_local_output(bool enabled) {
+  if(local_output_!=enabled) { local_output_=enabled; room_dirty_=true; }
+}
+void WebServer::broadcast_room() {
+  room_dirty_=false;
+  const auto mixes=spatial_mode_?active_mixes():std::map<uint64_t,SpeakerMix>{};
+  std::string room="ROOM|"+std::string(spatial_mode_?"spatial":"normal")+"|"+
+    std::to_string(windows_x_)+"|"+std::to_string(windows_y_)+"|"+
+    (local_output_?"1":"0");
+  for(const auto& item:clients_) {
+    const Client& client=*item.second;
+    if(!client.registered || client.dead) continue;
+    auto found=room_positions_.find(client.id);
+    const RoomPosition position=found==room_positions_.end()?RoomPosition{}:found->second;
+    const bool active=client.audio_enabled && client.sync.size()>=8;
+    room+="|"+std::to_string(client.id)+"|"+client.name+"|"+
+      std::to_string(position.x)+"|"+std::to_string(position.y)+"|"+
+      (active?"1":"0");
+  }
+  for(auto& item:clients_) {
+    Client& client=*item.second;
+    if(!client.registered || client.dead) continue;
+    send_text(client,room);
+    auto found=mixes.find(client.id);
+    const SpeakerMix mix=found==mixes.end()?SpeakerMix{}:found->second;
+    send_text(client,"MIX|"+std::string(mix.spatial?"spatial":"normal")+"|"+
+      formatted(mix.left,6)+"|"+formatted(mix.right,6));
   }
 }
 void WebServer::read_client(Client& client) {
@@ -304,8 +379,11 @@ void WebServer::handle_message(Client& client,const std::string& message,int64_t
     uint64_t id=0;
     if(!parse_integer(f[1],id) || !id || f[2].empty() || f[2].size()>48 ||
        !std::all_of(f[2].begin(),f[2].end(),[](unsigned char c){return c>=32 && c<=126;})) return;
+    for(auto& item:clients_) if(item.second.get()!=&client &&
+        item.second->registered && item.second->id==id) item.second->dead=true;
     client.id=id; client.name=f[2]; client.registered=true;
     client.last_seen_ns=received_ns;
+    room_dirty_=true;
     send_text(client,"WELCOME|Windows-Master|"+std::to_string(id));
     send_stream_info(client);
   } else if(!client.registered) return;
@@ -318,6 +396,7 @@ void WebServer::handle_message(Client& client,const std::string& message,int64_t
     client.pending.erase(pending);
     ClockSample sample;
     if(ClockSample::calculate(t1,t2,t3,received_ns,sample) && client.sync.add(sample)) {
+      if(client.sync.size()==8) room_dirty_=true;
       client.last_raw_offset_ns=sample.offset_ns;
       client.last_seen_ns=received_ns;
     }
@@ -326,7 +405,28 @@ void WebServer::handle_message(Client& client,const std::string& message,int64_t
   } else if(f[0]=="CLICK" && f.size()==1) {
     click_requested_=true; client.last_seen_ns=received_ns;
   } else if(f[0]=="AUDIO" && f.size()==2 && (f[1]=="0" || f[1]=="1")) {
-    client.audio_enabled=f[1]=="1"; client.last_seen_ns=received_ns;
+    const bool enabled=f[1]=="1";
+    if(client.audio_enabled!=enabled) room_dirty_=true;
+    client.audio_enabled=enabled; client.last_seen_ns=received_ns;
+  } else if(f[0]=="MODE" && f.size()==2 &&
+            (f[1]=="normal" || f[1]=="spatial")) {
+    const bool spatial=f[1]=="spatial";
+    if(spatial_mode_!=spatial) {
+      spatial_mode_=spatial; room_dirty_=true; save_room();
+    }
+    client.last_seen_ns=received_ns;
+  } else if(f[0]=="POSITION" && f.size()==4) {
+    uint64_t id=0; int x=-1,y=-1;
+    if(!parse_integer(f[1],id) || !parse_integer(f[2],x) ||
+       !parse_integer(f[3],y) || x<0 || x>100 || y<0 || y>100) return;
+    if(id) {
+      const bool connected=std::any_of(clients_.begin(),clients_.end(),[&](const auto& item){
+        return item.second->registered && !item.second->dead && item.second->id==id;
+      });
+      if(!connected || (room_positions_.size()>=128 && !room_positions_.count(id))) return;
+      room_positions_[id]={x,y};
+    } else { windows_x_=x; windows_y_=y; }
+    room_dirty_=true; save_room(); client.last_seen_ns=received_ns;
   } else if(f[0]=="CAL" && f.size()==2) {
     try {
       size_t consumed=0; double value=std::stod(f[1],&consumed);

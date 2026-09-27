@@ -40,6 +40,16 @@ function clickLabel(value) {
   return value;
 }
 export function render(state) {
+  const spatial = state.room.mode === "spatial";
+  element("mode-badge").textContent = spatial ? "空间音频" : "普通同步";
+  set("channel-mode", state.audio.mix.mode === "spatial" ? "位置混音（双声道输出）" : "完整立体声");
+  element("room-editor").hidden = !spatial;
+  document.querySelectorAll("[data-mode]").forEach((button) => {
+    const selected = button.dataset.mode === state.room.mode;
+    button.classList.toggle("is-selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+    button.disabled = state.connection !== "CONNECTED";
+  });
   set("connection-status", connectionLabels[state.connection] || state.connection);
   set("master-name", state.master === "Windows-Master" ? "Windows 主控" : state.master);
   set("device-name", deviceLabels[state.device] || state.device);
@@ -71,4 +81,64 @@ export function render(state) {
     state.audio.state !== "RUNNING" || !model || model.samples < 8;
   element("enable-speaker").disabled = state.calibrating;
   element("enable-speaker").textContent = state.audio.state === "RUNNING" ? "扬声器已启用" : "启用扬声器";
+}
+
+export function renderRoom(room, onPosition) {
+  const stage = element("room-stage");
+  const nodes = element("room-nodes");
+  nodes.replaceChildren();
+  const devices = [{ id: "0", name: "Windows 扬声器", x: room.windows.x,
+    y: room.windows.y, active: room.windows.active }, ...room.devices];
+  for (const device of devices) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "room-node" + (device.active ? " is-active" : "");
+    button.setAttribute("aria-label", `${device.name}：左右 ${device.x}，前后 ${device.y}。拖动或按方向键调整位置`);
+    const icon = document.createElement("b");
+    icon.textContent = device.id === "0" ? "▣" : "◉";
+    const label = document.createElement("span");
+    label.textContent = device.name;
+    button.append(icon, label);
+    const place = (x, y) => {
+      device.x = Math.max(0, Math.min(100, Math.round(x)));
+      device.y = Math.max(0, Math.min(100, Math.round(y)));
+      button.style.left = `${device.x}%`;
+      button.style.top = `${device.y}%`;
+    };
+    place(device.x, device.y);
+    let dragging = false;
+    button.addEventListener("pointerdown", (event) => {
+      dragging = true;
+      button.classList.add("is-dragging");
+      button.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+    button.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      const rect = stage.getBoundingClientRect();
+      place((event.clientX - rect.left) * 100 / rect.width,
+        (event.clientY - rect.top) * 100 / rect.height);
+    });
+    const release = () => {
+      if (!dragging) return;
+      dragging = false;
+      button.classList.remove("is-dragging");
+      onPosition(device.id, device.x, device.y);
+    };
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("keydown", (event) => {
+      const steps = { ArrowLeft: [-2, 0], ArrowRight: [2, 0],
+        ArrowUp: [0, -2], ArrowDown: [0, 2] };
+      if (!steps[event.key]) return;
+      event.preventDefault();
+      place(device.x + steps[event.key][0], device.y + steps[event.key][1]);
+      onPosition(device.id, device.x, device.y);
+    });
+    nodes.append(button);
+  }
+  const active = devices.filter((device) => device.active);
+  element("room-status").textContent = active.length < 2
+    ? "至少启用两台处于不同左右位置的扬声器，空间声道分配才会生效。"
+    : "正在按左右位置分配声道；移动设备后，建议在听音位置重新进行声音自动校准。";
 }

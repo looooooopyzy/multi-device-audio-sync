@@ -1,5 +1,6 @@
 #pragma once
 #include "audio/audio_packet.h"
+#include "spatial_mix.h"
 #include <cstdint>
 #include <memory>
 #include <thread>
@@ -26,6 +27,7 @@ public:
   LocalStreamPlayback& operator=(const LocalStreamPlayback&)=delete;
   void submit(const AudioPacket& packet);
   void set_delay_ms(double delay_ms);
+  void set_mix(SpeakerMix mix);
   uint64_t dropped() const;
 private:
   struct Impl;
